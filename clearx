@@ -5,39 +5,57 @@
 import sys
 import subprocess
 import shlex
+import hashlib
 from pathlib import Path
 from datetime import datetime
 
 CLEARX_DIR = Path.home() / ".local" / "state" / "clearx"
+LATEST_DIR = CLEARX_DIR / "latest"
 MAX_HISTORY = 5
 SCRIPT_PATH = Path(__file__).resolve()
-
 START_MARKER = "# clearx-hook-start"
 END_MARKER = "# clearx-hook-end"
+
+def get_command_name(command):
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return ""
+    if not parts:
+        return ""
+    return Path(parts[0]).name
 
 def save_command(command):
     command = command.strip()
     if not command:
-        return
-    first_word = command.split()[0]
-
-    if Path(first_word).name == "clearx":
-        return
-
+        return False
+    command_name = get_command_name(command)
+    if not command_name or command_name == "clearx":
+        return False
     CLEARX_DIR.mkdir(parents=True, exist_ok=True)
-
+    LATEST_DIR.mkdir(parents=True, exist_ok=True)
     filename = datetime.now().strftime("%Y%m%d%H%M%S%f")
     filepath = CLEARX_DIR / f"{filename}.cmd"
-
     filepath.write_text(command + "\n", encoding="utf-8")
-
+    key = hashlib.sha256(
+        command_name.encode("utf-8")
+    ).hexdigest()
+    latest_file = LATEST_DIR / f"{key}.cmd"
+    latest_file.write_text(command + "\n", encoding="utf-8")
     files = sorted(
         CLEARX_DIR.glob("*.cmd"),
         reverse=True
     )
-
     for old_file in files[MAX_HISTORY:]:
         old_file.unlink()
+    return True
+
+def read_input():
+    count = 0
+    for command in sys.stdin:
+        if save_command(command):
+            count += 1
+    print(f"{count}件のコマンドを保存しました")
 
 def show_history():
     CLEARX_DIR.mkdir(parents=True, exist_ok=True)
@@ -51,6 +69,22 @@ def show_history():
             encoding="utf-8"
         ).strip()
         print(f"$ {command}")
+
+def search_history(command_name):
+    LATEST_DIR.mkdir(parents=True,exist_ok=True)
+    key = hashlib.sha256(
+        command_name.encode("utf-8")
+    ).hexdigest()
+    latest_file = LATEST_DIR / f"{key}.cmd"
+    subprocess.run(["clear"],check=False)
+
+    if not latest_file.exists():
+        print(f"{command_name}の正常終了した履歴はありません")
+        return
+    command = latest_file.read_text(
+        encoding="utf-8"
+    ).strip()
+    print(f"$ {command}")
 
 def install():
     bashrc = Path.home() / ".bashrc"
@@ -113,10 +147,8 @@ def main():
     args = sys.argv[1:]
     if not args:
         show_history()
-    elif args[0] == "--install":
-        install()
-    elif args[0] == "--uninstall":
-        uninstall()
+    elif args[0] == "--input":
+        read_input()
     elif args[0] == "--record":
         if len(args) < 3:
             sys.exit(1)
@@ -124,15 +156,11 @@ def main():
         command = args[2]
         if status == 0:
             save_command(command)
-    elif args[0] == "--help":
-        print("clearx - Command history manager")
-        print("Usage:")
-        print("  clearx              Show command history")
-        print("  clearx --install    Enable automatic recording")
-        print("  clearx --uninstall  Disable automatic recording")
-        print("  clearx --help       Show help")
+    elif args[0] == "--install":
+        install()
+    elif args[0] == "--uninstall":
+        uninstall()
     else:
-        print("Unknown option. Use --help.")
-        sys.exit(1)
+        search_history(args[0])
 if __name__ == "__main__":
     main()
