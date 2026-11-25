@@ -1,0 +1,51 @@
+
+CLEARX_DIR="$HOME/.local/state/clearx"
+mkdir -p "$CLEARX_DIR"
+
+keep() {
+    local cmd="$*"
+    local tmp
+    local id
+
+    tmp=$(mktemp) || return 1
+
+    eval "$cmd" > "$tmp" 2>&1
+    local status=$?
+
+    cat "$tmp"
+
+    if [[ $status -eq 0 ]]; then
+        id=$(date +%s%N)
+        printf '%s' "$cmd" > "$CLEARX_DIR/$id.cmd"
+        cp "$tmp" "$CLEARX_DIR/$id.out"
+    fi
+
+    rm -f "$tmp"
+    return "$status"
+}
+
+clearx() {
+    command clear
+
+    local files
+    mapfile -t files < <(
+        find "$CLEARX_DIR" -name '*.cmd' -printf '%f\n' |
+        sort -r
+    )
+
+    local count=0
+    local file id
+
+    for file in "${files[@]}"; do
+        id="${file%.cmd}"
+
+        if (( count < 5 )); then
+            printf '$ %s\n' "$(cat "$CLEARX_DIR/$file")"
+            cat "$CLEARX_DIR/$id.out"
+            printf '\n'
+            ((count++))
+        else
+            rm -f "$CLEARX_DIR/$id.cmd" "$CLEARX_DIR/$id.out"
+        fi
+    done
+}
