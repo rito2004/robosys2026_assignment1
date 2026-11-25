@@ -1,4 +1,5 @@
-# robosys2026_assignment1
+# clearxコマンド
+![test](https://github.com/rito2004/robosys2026_assignment1/actions/workflows/test.yml/badge.svg)
 
 
 
