@@ -1,101 +1,137 @@
-#!/bin/bash
+#!/usr/bin/python3
+# SPDX-FileCopyrightText: 2026 Rihito Sakai
 
-CLEARX_DIR="$HOME/.local/state/clearx"
+import sys
+import subprocess
+import shlex
+from pathlib import Path
+from datetime import datetime
 
-clearx_record() {
+CLEARX_DIR = Path.home() / ".local" / "state" / "clearx"
+MAX_HISTORY = 5
+SCRIPT_PATH = Path(__file__).resolve()
+
+START_MARKER = "# clearx-hook-start"
+END_MARKER = "# clearx-hook-end"
+
+def save_command(command):
+    command = command.strip()
+    if not command:
+        return
+    first_word = command.split()[0]
+
+    if Path(first_word).name == "clearx":
+        return
+
+    CLEARX_DIR.mkdir(parents=True, exist_ok=True)
+
+    filename = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    filepath = CLEARX_DIR / f"{filename}.cmd"
+
+    filepath.write_text(command + "\n", encoding="utf-8")
+
+    files = sorted(
+        CLEARX_DIR.glob("*.cmd"),
+        reverse=True
+    )
+
+    for old_file in files[MAX_HISTORY:]:
+        old_file.unlink()
+
+def show_history():
+    CLEARX_DIR.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["clear"], check=False)
+    files = sorted(
+        CLEARX_DIR.glob("*.cmd"),
+        reverse=True
+    )
+    for filepath in reversed(files[:MAX_HISTORY]):
+        command = filepath.read_text(
+            encoding="utf-8"
+        ).strip()
+        print(f"$ {command}")
+
+def install():
+    bashrc = Path.home() / ".bashrc"
+    content = bashrc.read_text(encoding="utf-8") if bashrc.exists() else ""
+    if START_MARKER in content:
+        print("clearx is already installed.")
+        return
+    script = shlex.quote(str(SCRIPT_PATH))
+    hook = f"""
+{START_MARKER}
+__clearx_record() {{
     local status=$?
     local cmd
-    local id
-
-    mkdir -p "$CLEARX_DIR"    
     cmd=$(fc -ln -1 2>/dev/null)
-    cmd="${cmd#"${cmd%%[![:space:]]*}"}"
-    cmd="${cmd%"${cmd##*[![:space:]]}"}"
+    python3 {script} --record "$status" "$cmd"
+}}
 
-    [[ -z "$cmd" ]] && return
-
-    case "$cmd" in
-        clearx|clearx\ *|./clearx|./clearx\ *|*/clearx|*/clearx\ *)
-            return ;;
-    esac
-
-    (( status == 0 )) || return
-    id="$(date +%s%N)-$$-$RANDOM"
-
-    printf '%s\n' "$cmd" > "$CLEARX_DIR/$id.cmd"
-
-    find "$CLEARX_DIR" -maxdepth 1 -name '*.cmd' \
-        -printf '%f\n' |
-        sort -r |
-        tail -n +6 |
-        while IFS= read -r file; do
-            rm -f "$CLEARX_DIR/$file"
-        done
-}
-
-clearx_install_hook() {
-    export CLEARX_DIR
-    mkdir -p "$CLEARX_DIR"
-
-    HISTCONTROL=
-    HISTIGNORE=
-
-    if declare -p PROMPT_COMMAND 2>/dev/null |
-        grep -q '^declare -a'; then
-        PROMPT_COMMAND=(clearx_record "${PROMPT_COMMAND[@]}")
-    else
-        case ";${PROMPT_COMMAND-};" in
-            *";clearx_record;"*) ;;
-            *)
-                PROMPT_COMMAND="clearx_record${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
-                ;;
-        esac
-    fi
-}
-
-if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
-    if [[ "${1-}" == "--hook" ]]; then
-        clearx_install_hook
-    fi
-    return 0
+if declare -p PROMPT_COMMAND 2>/dev/null | grep -q '^declare -a'; then
+    PROMPT_COMMAND=(__clearx_record "${{PROMPT_COMMAND[@]}}")
+else
+    PROMPT_COMMAND="__clearx_record${{PROMPT_COMMAND:+; $PROMPT_COMMAND}}"
 fi
+{END_MARKER}
+"""
+    with bashrc.open("a", encoding="utf-8") as file:
+        file.write(hook)
 
-if [[ "${1-}" == "--install" ]]; then
-    SCRIPT_PATH="$(readlink -f "$0")"
-    BASHRC="$HOME/.bashrc"
+    CLEARX_DIR.mkdir(parents=True, exist_ok=True)
 
-    if grep -q '# clearx-hook' "$BASHRC"; then
-        echo "clearx is already installed."
-        exit 0
-    fi
+    print("clearx installed successfully.")
+    print("Run: source ~/.bashrc")
 
-    printf 'source %q --hook # clearx-hook\n' \
-        "$SCRIPT_PATH" >> "$BASHRC"
+def uninstall():
+    bashrc = Path.home() / ".bashrc"
 
-    mkdir -p "$CLEARX_DIR"
+    if not bashrc.exists():
+        print(".bashrc not found.")
+        return
 
-    echo "clearx installed successfully."
-    echo "Run: source ~/.bashrc"
-    exit 0
-fi
+    content = bashrc.read_text(encoding="utf-8")
 
-if [[ "${1-}" == "--uninstall" ]]; then
-    sed -i '/# clearx-hook$/d' "$HOME/.bashrc"
-    echo "clearx uninstalled."
-    echo "Restart your terminal to apply changes."
-    exit 0
-fi
+    start = content.find(START_MARKER)
+    end = content.find(END_MARKER)
 
-command clear
+    if start == -1 or end == -1:
+        print("clearx is not installed.")
+        return
 
-mapfile -t files < <(
-    find "$CLEARX_DIR" -maxdepth 1 -name '*.cmd' \
-        -printf '%f\n' |
-        sort -r |
-        head -n 5
-)
+    end += len(END_MARKER)
 
-for ((i=${#files[@]}-1; i>=0; i--)); do
-    file="${files[i]}"
-    printf '$ %s\n' "$(cat "$CLEARX_DIR/$file")"
-done
+    content = content[:start] + content[end:]
+
+    bashrc.write_text(content, encoding="utf-8")
+
+    print("clearx uninstalled.")
+    print("Restart your terminal to apply changes.")
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        show_history()
+    elif args[0] == "--install":
+        install()
+    elif args[0] == "--uninstall":
+        uninstall()
+    elif args[0] == "--record":
+        if len(args) < 3:
+            sys.exit(1)
+        status = int(args[1])
+        command = args[2]
+        if status == 0:
+            save_command(command)
+    elif args[0] == "--help":
+        print("clearx - Command history manager")
+        print("Usage:")
+        print("  clearx              Show command history")
+        print("  clearx --install    Enable automatic recording")
+        print("  clearx --uninstall  Disable automatic recording")
+        print("  clearx --help       Show help")
+    else:
+        print("Unknown option. Use --help.")
+        sys.exit(1)
+if __name__ == "__main__":
+    main()
