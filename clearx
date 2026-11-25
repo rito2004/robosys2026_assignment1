@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 CLEARX_DIR="$HOME/.local/state/clearx"
