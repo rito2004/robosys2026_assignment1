@@ -1,51 +1,102 @@
 
-CLEARX_DIR="$HOME/.local/state/clearx"
-mkdir -p "$CLEARX_DIR"
+#!/bin/bash
 
-keep() {
-    local cmd="$*"
-    local tmp
+CLEARX_DIR="$HOME/.local/state/clearx"
+
+clearx_record() {
+    local status=$?
+    local cmd
     local id
 
-    tmp=$(mktemp) || return 1
+    mkdir -p "$CLEARX_DIR"    
+    cmd=$(fc -ln -1 2>/dev/null)
+    cmd="${cmd#"${cmd%%[![:space:]]*}"}"
+    cmd="${cmd%"${cmd##*[![:space:]]}"}"
 
-    eval "$cmd" > "$tmp" 2>&1
-    local status=$?
+    [[ -z "$cmd" ]] && return
 
-    cat "$tmp"
+    case "$cmd" in
+        clearx|clearx\ *|./clearx|./clearx\ *|*/clearx|*/clearx\ *)
+            return ;;
+    esac
 
-    if [[ $status -eq 0 ]]; then
-        id=$(date +%s%N)
-        printf '%s' "$cmd" > "$CLEARX_DIR/$id.cmd"
-        cp "$tmp" "$CLEARX_DIR/$id.out"
+    (( status == 0 )) || return
+    id="$(date +%s%N)-$$-$RANDOM"
+
+    printf '%s\n' "$cmd" > "$CLEARX_DIR/$id.cmd"
+
+    find "$CLEARX_DIR" -maxdepth 1 -name '*.cmd' \
+        -printf '%f\n' |
+        sort -r |
+        tail -n +6 |
+        while IFS= read -r file; do
+            rm -f "$CLEARX_DIR/$file"
+        done
+}
+
+clearx_install_hook() {
+    export CLEARX_DIR
+    mkdir -p "$CLEARX_DIR"
+
+    HISTCONTROL=
+    HISTIGNORE=
+
+    if declare -p PROMPT_COMMAND 2>/dev/null |
+        grep -q '^declare -a'; then
+        PROMPT_COMMAND=(clearx_record "${PROMPT_COMMAND[@]}")
+    else
+        case ";${PROMPT_COMMAND-};" in
+            *";clearx_record;"*) ;;
+            *)
+                PROMPT_COMMAND="clearx_record${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+                ;;
+        esac
+    fi
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    if [[ "${1-}" == "--hook" ]]; then
+        clearx_install_hook
+    fi
+    return 0
+fi
+
+if [[ "${1-}" == "--install" ]]; then
+    SCRIPT_PATH="$(readlink -f "$0")"
+    BASHRC="$HOME/.bashrc"
+
+    if grep -q '# clearx-hook' "$BASHRC"; then
+        echo "clearx is already installed."
+        exit 0
     fi
 
-    rm -f "$tmp"
-    return "$status"
-}
+    printf 'source %q --hook # clearx-hook\n' \
+        "$SCRIPT_PATH" >> "$BASHRC"
 
-clearx() {
-    command clear
+    mkdir -p "$CLEARX_DIR"
 
-    local files
-    mapfile -t files < <(
-        find "$CLEARX_DIR" -name '*.cmd' -printf '%f\n' |
-        sort -r
-    )
+    echo "clearx installed successfully."
+    echo "Run: source ~/.bashrc"
+    exit 0
+fi
 
-    local count=0
-    local file id
+if [[ "${1-}" == "--uninstall" ]]; then
+    sed -i '/# clearx-hook$/d' "$HOME/.bashrc"
+    echo "clearx uninstalled."
+    echo "Restart your terminal to apply changes."
+    exit 0
+fi
 
-    for file in "${files[@]}"; do
-        id="${file%.cmd}"
+command clear
 
-        if (( count < 5 )); then
-            printf '$ %s\n' "$(cat "$CLEARX_DIR/$file")"
-            cat "$CLEARX_DIR/$id.out"
-            printf '\n'
-            ((count++))
-        else
-            rm -f "$CLEARX_DIR/$id.cmd" "$CLEARX_DIR/$id.out"
-        fi
-    done
-}
+mapfile -t files < <(
+    find "$CLEARX_DIR" -maxdepth 1 -name '*.cmd' \
+        -printf '%f\n' |
+        sort -r |
+        head -n 5
+)
+
+for ((i=${#files[@]}-1; i>=0; i--)); do
+    file="${files[i]}"
+    printf '$ %s\n' "$(cat "$CLEARX_DIR/$file")"
+done
