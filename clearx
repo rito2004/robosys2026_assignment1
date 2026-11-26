@@ -51,10 +51,7 @@ def save_command(command):
     return True
 
 def read_input():
-    count = 0
-    for command in sys.stdin:
-        if save_command(command):
-            count += 1
+    count = sum(save_command(command) for command in sys.stdin)
     print(f"{count}件のコマンドを保存しました")
 
 def show_history():
