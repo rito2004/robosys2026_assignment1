@@ -58,7 +58,7 @@ def show_history():
         CLEARX_DIR.glob("*.cmd"),
         reverse=True
     )
-    for filepath in reversed(files[:MAX_HISTORY]):
+    for file in reversed(files[:MAX_HISTORY]):
         print(f"$ {file.read_text(encoding='utf-8').strip()}")
 
 def search_history(command_name):
