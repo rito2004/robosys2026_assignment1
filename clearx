@@ -18,12 +18,9 @@ END_MARKER = "# clearx-hook-end"
 
 def get_command_name(command):
     try:
-        parts = shlex.split(command)
-    except ValueError:
+        return Path(shlex.split(command)[0]).name
+    except (ValueError, IndexError):
         return ""
-    if not parts:
-        return ""
-    return Path(parts[0]).name
 
 def save_command(command):
     command = command.strip()
