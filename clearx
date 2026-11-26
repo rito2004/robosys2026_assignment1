@@ -65,16 +65,12 @@ def show_history():
         reverse=True
     )
     for filepath in reversed(files[:MAX_HISTORY]):
-        command = filepath.read_text(
-            encoding="utf-8"
-        ).strip()
+        command = filepath.read_text(encoding="utf-8").strip()
         print(f"$ {command}")
 
 def search_history(command_name):
     LATEST_DIR.mkdir(parents=True,exist_ok=True)
-    key = hashlib.sha256(
-        command_name.encode("utf-8")
-    ).hexdigest()
+    key = hashlib.sha256(command_name.encode("utf-8")).hexdigest()
     latest_file = LATEST_DIR / f"{key}.cmd"
     subprocess.run(["clear"],check=False)
 
