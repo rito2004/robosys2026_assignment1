@@ -59,8 +59,7 @@ def show_history():
         reverse=True
     )
     for filepath in reversed(files[:MAX_HISTORY]):
-        command = filepath.read_text(encoding="utf-8").strip()
-        print(f"$ {command}")
+        print(f"$ {file.read_text(encoding='utf-8').strip()}")
 
 def search_history(command_name):
     LATEST_DIR.mkdir(parents=True,exist_ok=True)
