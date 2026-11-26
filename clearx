@@ -115,29 +115,20 @@ fi
 
 def uninstall():
     bashrc = Path.home() / ".bashrc"
-
     if not bashrc.exists():
         print(".bashrc not found.")
         return
-
     content = bashrc.read_text(encoding="utf-8")
-
     start = content.find(START_MARKER)
     end = content.find(END_MARKER)
-
     if start == -1 or end == -1:
         print("clearx is not installed.")
         return
-
     end += len(END_MARKER)
-
     content = content[:start] + content[end:]
-
     bashrc.write_text(content, encoding="utf-8")
-
     print("clearx uninstalled.")
     print("Restart your terminal to apply changes.")
-
 
 def main():
     args = sys.argv[1:]
