@@ -70,10 +70,7 @@ def search_history(command_name):
     if not latest_file.exists():
         print(f"{command_name}の正常終了した履歴はありません")
         return
-    command = latest_file.read_text(
-        encoding="utf-8"
-    ).strip()
-    print(f"$ {command}")
+    print(f"$ {latest_file.read_text(encording='utf-8').strip()}")
 
 def install():
     bashrc = Path.home() / ".bashrc"
